@@ -45,7 +45,7 @@ bool triggerOTA = false; // Thêm cờ báo hiệu cập nhật OTA
 
 bool thresholdChanged = false; // Cờ báo hiệu có sự thay đổi ngưỡng từ App
 
-String firmwareURL = "https://raw.githubusercontent.com/huyminhct2-jpg/Nhanam_V3_Khoi/main/Nhanam_V3/build/esp8266.esp8266.nodemcuv2/Nhanam_V3.ino.bin";
+String firmwareURL = "https://raw.githubusercontent.com/huyminhct2-jpg/Nhanam_V3_Duong-3/main/Nhanam_V3/build/esp8266.esp8266.nodemcuv2/Nhanam_V3.ino.bin";
 
 bool kichAmRunning = false; // khai báo nút kích ẩm 
 
