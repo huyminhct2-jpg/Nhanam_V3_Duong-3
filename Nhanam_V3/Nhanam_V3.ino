@@ -50,6 +50,8 @@ String firmwareURL = "https://raw.githubusercontent.com/huyminhct2-jpg/Nhanam_V3
 bool kichAmRunning = false; // khai báo nút kích ẩm 
 
 bool startKichAm = false;  
+
+int thighCount = 0; // Đếm số lần chạy chu kỳ nhiệt độ cao liên tiếp
 // =====================================================
 // ================== LCD & BLYNK ======================
 // =====================================================
@@ -186,6 +188,7 @@ void setup() {
 BLYNK_WRITE(V3)
 {
     Modeactive = param.asInt();
+    thighCount = 0; // Đổi chế độ thì reset biến đếm nhiệt độ cao
 
     switch (Modeactive)
     {
@@ -490,14 +493,121 @@ void loop() {
       }
 
       // ===== 2. NHIỆT ĐỘ CAO (QUẠT + ẨM) =====
-      else if (t > Reft1 && t < RefML){
-          Serial.println("NHIET DO CAO");
-          resetVentilator();
-          THigh1(); if (stopAuto || thresholdChanged) { autoRunning = false; allOff(); thresholdChanged = false; return;}
-          THigh2(); if (stopAuto || thresholdChanged) { autoRunning = false; allOff(); thresholdChanged = false; return;}
-          THigh3(); if (stopAuto || thresholdChanged) { autoRunning = false; allOff(); thresholdChanged = false; return;}
-          THigh4(); if (stopAuto || thresholdChanged) { autoRunning = false; allOff(); thresholdChanged = false; return;}
-      }
+      
+else if (t > Reft1 && t < RefML) {
+
+    Serial.println("NHIET DO CAO");
+    resetVentilator();
+
+    // BƯỚC 1: QUẠT 5 PHÚT
+    THigh1();
+    if (stopAuto || thresholdChanged || triggerOTA) {
+        autoRunning = false;
+        allOff();
+        thresholdChanged = false;
+        thighCount = 0;
+        return;
+    }
+
+    // BƯỚC 2: TẠO ẨM 2 PHÚT
+    THigh2();
+    if (stopAuto || thresholdChanged || triggerOTA) {
+        autoRunning = false;
+        allOff();
+        thresholdChanged = false;
+        thighCount = 0;
+        return;
+    }
+
+    // BƯỚC 3: QUẠT 5 PHÚT
+    THigh3();
+    if (stopAuto || thresholdChanged || triggerOTA) {
+        autoRunning = false;
+        allOff();
+        thresholdChanged = false;
+        thighCount = 0;
+        return;
+    }
+
+    // BƯỚC 4: NGHỈ VÀ KIỂM TRA 1 PHÚT
+    THigh4();
+    if (stopAuto || thresholdChanged || triggerOTA) {
+        autoRunning = false;
+        allOff();
+        thresholdChanged = false;
+        thighCount = 0;
+        return;
+    }
+
+    // HOÀN THÀNH 1 CHU KỲ
+    thighCount++;
+
+    Serial.print("CHU KY NHIET DO CAO: ");
+    Serial.println(thighCount);
+
+    // ĐỌC LẠI CẢM BIẾN
+    if (sht30.get() != 0) {
+        Serial.println("LOI CAM BIEN SHT30");
+        allOff();
+        autoRunning = false;
+        return;
+    }
+
+    t = sht30.cTemp;
+
+    Serial.print("NHIET DO HIEN TAI: ");
+    Serial.println(t);
+
+    // NHIỆT ĐỘ ĐÃ GIẢM
+    if (t <= Reft1) {
+        Serial.println("NHIET DO DA GIAM - RESET BO DEM");
+        thighCount = 0;
+    }
+
+    // VẪN CAO SAU 5 CHU KỲ
+    else if (t > Reft1 && t < RefML && thighCount >= 5) {
+
+        Serial.println("DU 5 CHU KY - BAT MAY LANH 45 PHUT");
+
+        // BẬT MÁY LẠNH 45 PHÚT
+        TMayLanh45P();
+
+        if (stopAuto || thresholdChanged || triggerOTA) {
+            autoRunning = false;
+            allOff();
+            thresholdChanged = false;
+            thighCount = 0;
+            return;
+        }
+
+        // TẮT TOÀN BỘ RELAY
+        allOff();
+
+        // RESET ĐỂ BẮT ĐẦU LẠI CHU KỲ MỚI NẾU VẪN CAO
+        thighCount = 0;
+
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Ktra Nhiet Do");
+
+        Serial.println("MAY LANH TAT - NGHI 2 PHUT");
+
+        // NGHỈ 2 PHÚT
+        delayWithCheck(2 * 60000UL);
+
+        if (stopAuto || thresholdChanged || triggerOTA) {
+            autoRunning = false;
+            allOff();
+            thresholdChanged = false;
+            return;
+        }
+
+        // VÒNG LOOP TIẾP THEO SẼ ĐỌC LẠI SHT30
+        // NẾU VẪN CAO: CHẠY LẠI QUY TRÌNH NHIỆT ĐỘ CAO
+        Serial.println("HOAN TAT NGHI - KIEM TRA LAI NHIET DO");
+    }
+}
+
 
       // ===== ĐỘ ẨM THẤP =====
       else if (h < Refh2){
@@ -650,6 +760,8 @@ void HLow3() { autoAction("Do am thap!", "Bat tao lan 2", LOW, HIGH, LOW, 3 * 60
 
 void HHigh() { autoAction("Do am cao", "", HIGH, LOW, LOW, 3 * 60000); }
 
+void TMayLanh45P() {autoAction("Ha Nhiet Cuong Che", "May Lanh: 45P", LOW, LOW, HIGH, 45 * 60000UL); }
+
 // =======================================================
 // ================= // hàm kích ẩm  =================
 // =======================================================
@@ -745,15 +857,26 @@ void delayWithCheck(unsigned long duration) {
 
   while (millis() - start < duration) {
 
-    // Thoát khi có yêu cầu dừng
     if (triggerOTA ||
         (!kichAmRunning && thresholdChanged) ||
         (stopAuto && !kichAmRunning)) {
       break;
     }
 
-    // Luôn cập nhật nhiệt độ và độ ẩm,
-    // kể cả khi AUTO đang chạy quy trình dài
+    // Đọc lại cảm biến mỗi giây khi AUTO đang chạy
+    static unsigned long lastAutoSensorRead = 0;
+
+    if (Modeactive == 1 && autoRunning &&
+        millis() - lastAutoSensorRead >= 1000UL) {
+
+      lastAutoSensorRead = millis();
+
+      if (sht30.get() != 0) {
+        Serial.println("LOI DOC CAM BIEN SHT30");
+      }
+    }
+
+    // Gửi dữ liệu mới lên Blynk
     Display();
 
     Blynk.run();
