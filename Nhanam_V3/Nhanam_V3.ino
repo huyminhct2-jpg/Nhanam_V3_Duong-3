@@ -1,5 +1,5 @@
 // =====================================================
-// ============= Code nhà nấm V3 =======================
+// ============= Code nhà nấm V3 =======================\n// ===== Ban toi uu A: mot file INO, gom code hien thi trung lap =====
 // =====================================================
 #include <ESP8266httpUpdate.h>
 #include <WiFiClientSecure.h>
@@ -292,48 +292,71 @@ void ShowMode(const char* mode)
 }
 
 
+// Gửi một bộ dữ liệu nhiệt độ/độ ẩm lên Blynk.
+// Dùng chung cho hiển thị thông thường và chế độ kích ẩm.
+void SendSensorToBlynk(float t, float h) {
+  if (Blynk.connected()) {
+    Blynk.virtualWrite(V1, t);
+    Blynk.virtualWrite(V2, h);
+  }
+}
+
 void Display() {
   if (millis() - lastTime1 < 1000UL) return;
   lastTime1 = millis();
 
-  // Cập nhật dữ liệu lên Blynk
-  if (Blynk.connected()) {
-    Blynk.virtualWrite(V1, sht30.cTemp);
-    Blynk.virtualWrite(V2, sht30.humidity);
+  // Giữ nguyên cách dùng dữ liệu cảm biến đã được đọc ở loop().
+  SendSensorToBlynk(sht30.cTemp, sht30.humidity);
+}
+
+void UpdateSensorKichAm() {
+  static unsigned long lastUpdate = 0;
+
+  if (millis() - lastUpdate < 1000UL) return;
+  lastUpdate = millis();
+
+  // Riêng chế độ kích ẩm: chủ động đọc cảm biến mới mỗi giây.
+  if (sht30.get() == 0) {
+    SendSensorToBlynk(sht30.cTemp, sht30.humidity);
+
+    Serial.print("KICH AM - Nhiet do: ");
+    Serial.print(sht30.cTemp);
+    Serial.print(" C | Do am: ");
+    Serial.print(sht30.humidity);
+    Serial.println(" %");
+  } else {
+    Serial.println("KICH AM - LOI DOC SHT30");
   }
 }
+
+// Dùng chung phần ghi nhiệt độ/độ ẩm lên LCD.
+void WriteSensorLCD(float t, float h) {
+  lcd.setCursor(0, 0);
+  lcd.print("Nhiet do:       ");
+  lcd.setCursor(9, 0);
+  lcd.print(t, 1);
+  lcd.write(223);
+  lcd.print("C ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Do am   :       ");
+  lcd.setCursor(9, 1);
+  lcd.print(h, 1);
+  lcd.print("% ");
+}
+
 unsigned long lastSensorLCDUpdate = 0;
+
 void DisplaySensorLCD(float t, float h) {
   if (millis() - lastSensorLCDUpdate < 1000UL) return;
   lastSensorLCDUpdate = millis();
 
-  lcd.setCursor(0, 0);
-  lcd.print("Nhiet do:       ");
-  lcd.setCursor(9, 0);
-  lcd.print(t, 1);
-  lcd.write(223);
-  lcd.print("C ");
-
-  lcd.setCursor(0, 1);
-  lcd.print("Do am   :       ");
-  lcd.setCursor(9, 1);
-  lcd.print(h, 1);
-  lcd.print("% ");
+  WriteSensorLCD(t, h);
 }
 
 void DisplayManual(float t, float h) {
-  lcd.setCursor(0, 0);
-  lcd.print("Nhiet do:       ");
-  lcd.setCursor(9, 0);
-  lcd.print(t, 1);
-  lcd.write(223);
-  lcd.print("C ");
-
-  lcd.setCursor(0, 1);
-  lcd.print("Do am   :       ");
-  lcd.setCursor(9, 1);
-  lcd.print(h, 1);
-  lcd.print("% ");
+  // Giữ nguyên hành vi cũ: chế độ thủ công không giới hạn chu kỳ hiển thị.
+  WriteSensorLCD(t, h);
 }
 
 
@@ -854,15 +877,17 @@ void checkWiFiStatus() {
 
 void delayWithCheck(unsigned long duration) {
   unsigned long start = millis();
+   // Ghi nhận hàm được gọi từ chu trình kích ẩm hay không
+  bool wasKichAm = kichAmRunning;
 
   while (millis() - start < duration) {
 
     if (triggerOTA ||
-        (!kichAmRunning && thresholdChanged) ||
-        (stopAuto && !kichAmRunning)) {
-      break;
-    }
-
+    (wasKichAm && !kichAmRunning) ||
+    (!kichAmRunning && thresholdChanged) ||
+    (stopAuto && !kichAmRunning)) {
+  break;
+}
     // Đọc lại cảm biến mỗi giây khi AUTO đang chạy
     static unsigned long lastAutoSensorRead = 0;
 
@@ -876,8 +901,12 @@ void delayWithCheck(unsigned long duration) {
       }
     }
 
-    // Gửi dữ liệu mới lên Blynk
-    Display();
+    // Kích ẩm đọc cảm biến mới; các chế độ khác giữ cách cập nhật Display() cũ.
+    if (kichAmRunning) {
+      UpdateSensorKichAm();
+    } else {
+      Display();
+    }
 
     Blynk.run();
     timer.run();
