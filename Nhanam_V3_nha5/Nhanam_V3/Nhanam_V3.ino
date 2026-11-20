@@ -72,7 +72,7 @@ const unsigned long LCDResetInterval = 900000UL; // 15 phút  -> dùng reset LCD
 // =====================================================
 char auth[] = "0iz7A2R5EwsELbiDhlTzmwRam1wG8WsT"; // Token Blynk 
 const char* ssid = "NHA NAM";                    // SSID WiFi
-const char* pass = "123456789@@";                // Mật khẩu WiFi
+const char* pass = "123456789@@";
 
 // Thông tin cho OTA (web update)
 const char* host = "ESP";                        // Tên mDNS
